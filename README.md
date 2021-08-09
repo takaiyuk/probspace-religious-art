@@ -15,6 +15,8 @@ root@xxxxx:/workspace# venv-acitvate
 
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
+submission_013.csv | 0.61927 | 0.609 | - | - |stacking: exp008, exp010, exp012 (average)
+submission_012.csv | 0.60550 | 0.609 | - | exp008 |resnext50, more augmentations
 submission_011.csv | 0.59786 | 0.625 | - | - |stacking: exp008, exp010 (average)
 submission_010.csv | 0.58716 | 0.578 | - | exp008 |resnest50
 submission_009.csv | 0.50765 | - | - | exp008 |mobilenetv3
@@ -37,9 +39,9 @@ y | CV | train sample size | Public | public sample size |
 4 | 0.064 | 42 | 0.078 | 5
 5 | 0.092 | 60 | 0.047 | 3
 6 | 0.073 | 48 | 0.078 | 5
-7 | 0.046 | 30 | - | -
-8 | 0.046 | 30 | - | -
-9 | 0.101 | 66 | - | -
-10 | 0.046 | 30 | - | -
-11 | 0.064 | 42 | - | -
-12 | 0.046 | 30 | - | -
+7 | 0.046 | 30 | 0.062 | 4
+8 | 0.046 | 30 | 0.031 | 2
+9 | 0.101 | 66 | 0.078 | 5
+10 | 0.046 | 30 | 0.047 | 3
+11 | 0.064 | 42 | 0.094 | 6
+12 | 0.046 | 30 | 0.062 | 4
