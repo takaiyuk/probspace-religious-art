@@ -15,6 +15,7 @@ root@xxxxx:/workspace# venv-acitvate
 
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
+submission_014.csv | 0.59939 | - | - | exp012 |larger image_size, more epochs
 submission_013.csv | 0.61927 | 0.609 | - | - |stacking: exp008, exp010, exp012 (average)
 submission_012.csv | 0.60550 | 0.609 | - | exp008 |resnext50, more augmentations
 submission_011.csv | 0.59786 | 0.625 | - | - |stacking: exp008, exp010 (average)
