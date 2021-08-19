@@ -7,6 +7,25 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 
+def get_default_logger() -> logging.Logger:
+    logger = logging.getLogger()
+    stream_handler = logging.StreamHandler(stream=sys.stdout)
+    logger.addHandler(stream_handler)
+    logger.setLevel(logging.INFO)
+    return logger
+
+
+class DefaultLogger:
+    def __init__(self):
+        self.logger = get_default_logger()
+
+    def info(self, message: str) -> None:
+        self.logger.info(message)
+
+    def result(self, message: str) -> None:
+        self.info(message)
+
+
 class Logger:
     """https://github.com/upura/ayniy/blob/master/ayniy/utils.py#L183"""
 
@@ -16,7 +35,8 @@ class Logger:
         result_path: str = "logs/result.log",
         run_name: Optional[str] = None,
     ) -> None:
-        os.makedirs("logs", exist_ok=True)
+        os.makedirs(os.path.dirname(general_path), exist_ok=True)
+        os.makedirs(os.path.dirname(result_path), exist_ok=True)
         self.general_logger = logging.getLogger("general")
         self.result_logger = logging.getLogger("result")
         self.run_name = run_name
