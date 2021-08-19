@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import shutil
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -39,6 +40,8 @@ class Logger:
         os.makedirs(os.path.dirname(result_path), exist_ok=True)
         self.general_logger = logging.getLogger("general")
         self.result_logger = logging.getLogger("result")
+        self.general_path = general_path
+        self.result_path = result_path
         self.run_name = run_name
         stream_handler = logging.StreamHandler(stream=sys.stdout)
         file_general_handler = logging.FileHandler(general_path)
@@ -74,6 +77,14 @@ class Logger:
         for i, score in enumerate(scores):
             dic[f"score_{i}"] = score
         self.result(self._to_ltsv(dic))
+
+    def clean(self) -> None:
+        general_path_dir = os.path.dirname(self.general_path)
+        result_path_dir = os.path.dirname(self.result_path)
+        if os.path.exists(general_path_dir):
+            shutil.rmtree(general_path_dir)
+        if os.path.exists(result_path_dir):
+            shutil.rmtree(result_path_dir)
 
     def _now_string(self) -> str:
         return str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))

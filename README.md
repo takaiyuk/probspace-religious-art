@@ -2,6 +2,15 @@
 
 https://prob.space/competitions/religious_art
 
+## Run
+
+```
+$ ./scripts/docker/run.sh
+$ ./scripts/docker/exec.sh
+root@xxxxx:/workspace# venv-acitvate
+(venv) root@xxxxx:/workspace# python -m src.run -e expXXX
+```
+
 ## Jupyter
 
 ```
@@ -15,12 +24,13 @@ root@xxxxx:/workspace# venv-acitvate
 
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
-submission_014.csv | 0.59939 | - | - | exp012 |larger image_size, more epochs
-submission_013.csv | 0.61927 | 0.609 | - | - |stacking: exp008, exp010, exp012 (average)
-submission_012.csv | 0.60550 | 0.609 | - | exp008 |resnext50, more augmentations
-submission_011.csv | 0.59786 | 0.625 | - | - |stacking: exp008, exp010 (average)
-submission_010.csv | 0.58716 | 0.578 | - | exp008 |resnest50
-submission_009.csv | 0.50765 | - | - | exp008 |mobilenetv3
+submission_015.csv | 0.60550 | - | - | exp014 | resnext50 -> resnext101
+submission_014.csv | 0.59939 | - | - | exp012 | larger image_size, more epochs
+submission_013.csv | 0.61927 | 0.609 | - | - | stacking: exp008, exp010, exp012 (average)
+submission_012.csv | 0.60550 | 0.609 | - | exp008 | resnext50, more augmentations
+submission_011.csv | 0.59786 | 0.625 | - | - | stacking: exp008, exp010 (average)
+submission_010.csv | 0.58716 | 0.578 | - | exp008 | resnest50
+submission_009.csv | 0.50765 | - | - | exp008 | mobilenetv3
 submission_008.csv | 0.57034 | 0.594 | - | exp006 | image サイズを大きく
 submission_007.csv | 0.56422 | 0.484 | - | exp006 | efficient_b2 に変更
 submission_006.csv | 0.55657 | 0.516 | - | exp005 | 損失関数に weights を追加（少数クラスほど weight を大きく）
