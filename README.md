@@ -8,7 +8,7 @@ https://prob.space/competitions/religious_art
 $ ./scripts/docker/run.sh
 $ ./scripts/docker/exec.sh
 root@xxxxx:/workspace# venv-acitvate
-(venv) root@xxxxx:/workspace# python -m src.run -e expXXX
+(venv) root@xxxxx:/workspace# ./scrirpts/run.sh expXXX
 ```
 
 ## Jupyter
