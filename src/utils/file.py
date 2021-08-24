@@ -9,6 +9,6 @@ def check_exist(filepath: str) -> bool:
 def mkdir(filepath: str) -> bool:
     os.makedirs(filepath, exist_ok=True)
 
-    
+
 def rmdir(directory: str) -> None:
     shutil.rmtree(directory)
