@@ -365,7 +365,7 @@ class TrainRunner(BaseRunner):
                 "best_score": best_score,
                 "scores": scores,
                 "config": self.cfg,
-                "original_train_length": self.original_train_length,
+                "preds_evaluate_length": len(preds_evaluate),
             },
             f"{OutputPath.model}/{self.cfg.basic.run_name}_{n_fold}.pth",
         )

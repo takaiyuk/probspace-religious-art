@@ -207,7 +207,11 @@ class StackingRunner(BaseRunner):
 
         preds: List[np.array] = []
         for run_name in self.cfg.stacked_features:
-            pred = torch.load(f"{OutputPath.model}/{run_name}_{n_fold}.pth")["preds"]
+            model_dict = torch.load(f"{OutputPath.model}/{run_name}_{n_fold}.pth")
+            pred = model_dict["preds"]
+            if run_name == "exp018":
+                preds_evaluate_length = model_dict["preds_evaluate_length"]
+                pred = pred[:preds_evaluate_length]
             preds.append(pred)
         preds = np.mean(preds, axis=0)
         valid_folds = valid_folds.assign(preds=np.argmax(preds, axis=1))
@@ -220,12 +224,14 @@ class StackingRunner(BaseRunner):
         for n_fold in range(self.cfg.kfold.number):
             _oof_df = self._train(train, n_fold)
             self.logger.info(f"========== fold: {n_fold} result ==========")
-            self._evaluate(_oof_df["target"], _oof_df["preds"], verbose=True)
+            score = self._evaluate(_oof_df["target"], _oof_df["preds"], verbose=True)
+            if hasattr(self.logger, "result"):
+                self.logger.result(f"Fold {n_fold} Score: {score:<.5f}")
             oof_df = pd.concat([oof_df, _oof_df])
         self.logger.info("========== CV ==========")
         score = self._evaluate(oof_df["target"], oof_df["preds"], verbose=True)
         if hasattr(self.logger, "result"):
-            self.logger.result(f"Fold {n_fold} Score: {score:<.5f}")
+            self.logger.result(f"CV Score: {score:<.5f}")
         Jbl.save(oof_df, f"{OutputPath.model}/oof_df_{self.cfg.basic.run_name}.jbl")
 
 
