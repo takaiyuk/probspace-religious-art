@@ -24,8 +24,9 @@ root@xxxxx:/workspace# venv-acitvate
 
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
+submission_018.csv | 0.64394 | 0.609 | - | exp017 | leak fix (avoid evaluating psuedo labeled dataset)
 submission_017.csv | 0.72126 | 0.578 | - | exp015 | psuedo labeling
-submission_016.csv | 0.61927 | 0.656 | - | exp014 | stacking: exp008, exp010, exp012, exp015 (average)
+submission_016.csv | 0.61927 | 0.656 | - | - | stacking: exp008, exp010, exp012, exp015 (average)
 submission_015.csv | 0.60550 | 0.609 | - | exp014 | resnext50 -> resnext101
 submission_014.csv | 0.59939 | 0.562 | - | exp012 | larger image_size, more epochs
 submission_013.csv | 0.61927 | 0.609 | - | - | stacking: exp008, exp010, exp012 (average)
