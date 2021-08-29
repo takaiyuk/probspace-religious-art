@@ -1,3 +1,4 @@
+from src.utils.augmentations import CutMix, CutOut, MixUp
 from src.utils.config import print_cfg
 from src.utils.file import check_exist, mkdir, rmdir
 from src.utils.joblib import Jbl
@@ -10,9 +11,12 @@ from src.utils.time import time_since
 
 __all__ = [
     "AverageMeter",
+    "CutMix",
+    "CutOut",
     "DefaultLogger",
     "Jbl",
     "Logger",
+    "MixUp",
     "check_exist",
     "fix_seed",
     "get_default_logger",
