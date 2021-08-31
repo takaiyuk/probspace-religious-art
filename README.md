@@ -24,6 +24,15 @@ root@xxxxx:/workspace# venv-acitvate
 
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
+submission_030.csv | 0.64220 | 0.641 | - | - | stacking: exp028, exp027, exp026, exp025, exp024 (average)
+submission_029.csv | 0.63914 | 0.625 | - | - | stacking: exp028, exp027, exp026, exp025, exp024, exp023 (average)
+submission_028.csv | 0.64832 | 0.609 | - | - | same as submission_021
+submission_027.csv | 0.66055 | 0.656 | - | - | same as submission_020
+submission_026.csv | 0.65291 | 0.641 | - | - | same as submission_019
+submission_025.csv | 0.61927 | 0.656 | - | - | same as submission_016
+submission_024.csv | 0.61927 | 0.609 | - | - | same as submission_013
+submission_023.csv | 0.59786 | 0.625 | - | - | same as submission_011
+submission_022.csv | ------- | ----- | - | - | CutMix
 submission_021.csv | 0.64832 | 0.609 | - | - | stacking: exp012, exp015, exp018 (average)
 submission_020.csv | 0.66055 | 0.656 | - | - | stacking: exp010, exp012, exp015, exp018 (average)
 submission_019.csv | 0.65291 | 0.656 | - | - | stacking: exp008, exp010, exp012, exp015, exp018 (average)
