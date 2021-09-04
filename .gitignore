@@ -146,6 +146,8 @@ cython_debug/
 *.png
 input/*
 dino/
+notebooks/images/
+yolov5/
 # notebooks/*
 .vscode/
 
