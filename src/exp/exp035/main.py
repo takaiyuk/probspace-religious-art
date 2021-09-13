@@ -18,9 +18,8 @@ from torch.optim import lr_scheduler
 from torch.utils import data
 from torch.utils.data import DataLoader
 from torchvision import transforms as T
-from tqdm import tqdm
 
-from src.exp.exp033.config import InputPath, ModelConfig, OutputPath
+from src.exp.exp035.config import InputPath, ModelConfig, OutputPath
 from src.utils import AverageMeter, DefaultLogger, Jbl, Logger, fix_seed
 
 sns.set_style("whitegrid")
@@ -34,10 +33,7 @@ def validate_config(model_config: ModelConfig) -> None:
             for x in os.listdir(OutputPath.model)
             if x.endswith("_0.pth")
         ]
-        run_name = model_config.basic.run_name
-        assert (
-            run_name not in past_sessions
-        ), f"{run_name} already exists. Check and remove models if you want"
+        assert model_config.basic.run_name not in past_sessions
 
     def _validate_device(model_config: ModelConfig) -> None:
         assert model_config.basic.device == "cuda"
@@ -133,10 +129,10 @@ class ProbSpaceDataset(data.Dataset):
 
 
 class ProbSpaceModel(nn.Module):
-    def __init__(self, model_config: ModelConfig):
+    def __init__(self, model_config: ModelConfig, model_name: str):
         super().__init__()
         self.backbone = timm.create_model(
-            model_config.params.model_name,
+            model_name,
             pretrained=model_config.params.pretrained,
             num_classes=model_config.params.target_size,
         )
@@ -148,8 +144,36 @@ class ProbSpaceModel(nn.Module):
         return x
 
 
-def build_model(model_config: ModelConfig):
-    model = ProbSpaceModel(model_config)
+class ProbSpaceStackingModel(nn.Module):
+    def __init__(self, model_config: ModelConfig):
+        super().__init__()
+        in_features = (
+            len(model_config.stacked_features) * model_config.params.target_size
+        )
+        hidden_features = 128
+        self.linear1 = nn.Linear(in_features, hidden_features)
+        self.linear2 = nn.Linear(hidden_features, hidden_features)
+        self.linear3 = nn.Linear(hidden_features, model_config.params.target_size)
+        self.softmax = nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.linear2(x)
+        x = self.linear3(x)
+        x = self.softmax(x)
+        return x
+
+
+def build_model(model_config: ModelConfig, model_name: str = None):
+    if model_name is None:
+        model_name = model_config.params.model_name
+    model = ProbSpaceModel(model_config, model_name)
+    model.to(model_config.basic.device)
+    return model
+
+
+def build_model_for_stacking(model_config: ModelConfig):
+    model = ProbSpaceStackingModel(model_config)
     model.to(model_config.basic.device)
     return model
 
@@ -203,25 +227,54 @@ class BaseRunner:
         return score
 
 
-class TrainRunner(BaseRunner):
-    def _train_epoch(self, train_loader, model, criterion, optimizer):
+class StackingRunner(BaseRunner):
+    def _train_epoch(self, train_images, train_labels, model, criterion, optimizer):
         losses = AverageMeter()
         model.train()
         for _ in range(self.cfg.params.num_aug):
-            for _, image_label_dict in enumerate(train_loader):
-                images = image_label_dict.get("image").to(self.cfg.basic.device)
-                labels = image_label_dict.get("label").to(self.cfg.basic.device)
-                batch_size = labels.size(0)
+            # for _, image_label_dict in enumerate(train_loader):
+            # images = image_label_dict.get("image").to(self.cfg.basic.device)
+            # labels = image_label_dict.get("label").to(self.cfg.basic.device)
+            images = (
+                torch.from_numpy(train_images.astype(np.float32))
+                .clone()
+                .to(self.cfg.basic.device)
+            )
+            labels = torch.from_numpy(train_labels).clone().to(self.cfg.basic.device)
+            batch_size = labels.size(0)
 
-                y_preds = model(images)
-                loss = criterion(y_preds, labels)
-                losses.update(loss.item(), batch_size)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+            y_preds = model(images)
+            loss = criterion(y_preds, labels)
+            losses.update(loss.item(), batch_size)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
         return losses.avg
 
-    def _valid_epoch(self, valid_loader, model, criterion):
+    def _valid_epoch(self, valid_images, valid_labels, model, criterion):
+        losses = AverageMeter()
+        model.eval()
+        preds = []
+        # for _, image_label_dict in enumerate(valid_loader):
+        # images = image_label_dict.get("image").to(self.cfg.basic.device)
+        # labels = image_label_dict.get("label").to(self.cfg.basic.device)
+        images = (
+            torch.from_numpy(valid_images.astype(np.float32))
+            .clone()
+            .to(self.cfg.basic.device)
+        )
+        labels = torch.from_numpy(valid_labels).clone().to(self.cfg.basic.device)
+        batch_size = labels.size(0)
+
+        with torch.no_grad():
+            y_preds = model(images)
+        loss = criterion(y_preds, labels)
+        losses.update(loss.item(), batch_size)
+        preds.append(y_preds.to("cpu").numpy())
+        predictions = np.concatenate(preds).reshape(-1, self.params.target_size)
+        return losses.avg, predictions
+
+    def _valid_epoch_with_dataloader(self, valid_loader, model, criterion):
         losses = AverageMeter()
         model.eval()
         preds = []
@@ -253,40 +306,41 @@ class TrainRunner(BaseRunner):
         trn_idx = train[train["fold"] != n_fold].index.tolist()
         val_idx = train[train["fold"] == n_fold].index.tolist()
         train_images_folds = train_images[trn_idx]
-        valid_images_folds = train_images[val_idx]
+        # valid_images_folds = train_images[val_idx]
         train_labels_folds = train_labels[trn_idx]
         valid_labels_folds = train_labels[val_idx]
         # train_folds = train.loc[trn_idx].reset_index(drop=True)
-        # valid_folds = train.loc[val_idx].reset_index(drop=True)
-        valid_folds = train.loc[val_idx]
+        valid_folds = train.loc[val_idx].reset_index(drop=True)
+        # valid_folds = train.loc[val_idx]
         train_dataset = ProbSpaceDataset(
             train_images_folds,
             train_labels_folds,
             is_train=True,
             #             transform=get_transforms(self.params, data="train"),
         )
-        valid_dataset = ProbSpaceDataset(
-            valid_images_folds,
-            valid_labels_folds,
-            is_train=is_tta_mode,
-            #             transform=get_transforms(self.params, data="valid"),
-        )
+        # valid_dataset = ProbSpaceDataset(
+        #     valid_images_folds,
+        #     valid_labels_folds,
+        #     is_train=is_tta_mode,
+        #     #             transform=get_transforms(self.params, data="valid"),
+        # )
         train_loader = DataLoader(
             train_dataset,
             batch_size=self.params.batch_size,
             shuffle=True,
             num_workers=self.params.num_workers,
             pin_memory=True,
-            drop_last=True,
-        )
-        valid_loader = DataLoader(
-            valid_dataset,
-            batch_size=self.params.batch_size,
-            shuffle=False,
-            num_workers=self.params.num_workers,
-            pin_memory=True,
+            # drop_last=True,
             drop_last=False,
         )
+        # valid_loader = DataLoader(
+        #     valid_dataset,
+        #     batch_size=self.params.batch_size,
+        #     shuffle=False,
+        #     num_workers=self.params.num_workers,
+        #     pin_memory=True,
+        #     drop_last=False,
+        # )
 
         # 少数クラスほど重みをつける
         weights = 1 / np.array(
@@ -296,7 +350,52 @@ class TrainRunner(BaseRunner):
         assert np.all(weights != 0)
         weights = torch.tensor(weights).float().to(self.cfg.basic.device)
 
-        model = build_model(model_config=self.cfg)
+        criterion = nn.CrossEntropyLoss(weight=weights)
+
+        train_preds: List[np.array] = []
+        valid_preds: List[np.array] = []
+        for run_name in self.cfg.stacked_features:
+            model_dict = torch.load(f"{OutputPath.model}/{run_name}_{n_fold}.pth")
+
+            model_name = getattr(self.cfg.params, f"model_name_{run_name}")
+            model = build_model(model_config=self.cfg, model_name=model_name)
+            model.load_state_dict(model_dict["model"])
+            model.to(self.cfg.basic.device)
+            _, pred = self._valid_epoch_with_dataloader(train_loader, model, criterion)
+            train_preds.append(pred)
+
+            pred = model_dict["preds"]
+            if run_name == "exp018":
+                preds_evaluate_length = model_dict["preds_evaluate_length"]
+                pred = pred[:preds_evaluate_length]
+            valid_preds.append(pred)
+        import pdb
+
+        pdb.set_trace()
+        train_preds = (
+            np.array(train_preds)
+            .transpose(1, 0, 2)
+            .reshape(-1, len(self.cfg.stacked_features) * self.params.target_size)
+        )
+        valid_preds = (
+            np.array(valid_preds)
+            .transpose(1, 0, 2)
+            .reshape(-1, len(self.cfg.stacked_features) * self.params.target_size)
+        )
+
+        from sklearn.linear_model import LogisticRegression as LR
+
+        params = {"penalty": "l2", "solver": "sag", "random_state": 42}
+        model = LR(**params)
+        model.fit(train_preds, train_labels_folds)
+        preds_proba = model.predict_proba(valid_preds)
+        preds_ = np.argmax(preds_proba, axis=1)
+        valid_labels = valid_folds["target"].values
+        score = self._evaluate(valid_labels, preds_)
+        self.logger.info(f"Accuracy: {score}")
+        raise ValueError
+
+        model = build_model_for_stacking(model_config=self.cfg)
         model.to(self.cfg.basic.device)
         optimizer = optim.Adam(
             model.parameters(),
@@ -305,8 +404,6 @@ class TrainRunner(BaseRunner):
             amsgrad=self.params.optimizer.amsgrad,
         )
         scheduler = self._get_scheduler(optimizer)
-        criterion = nn.CrossEntropyLoss(weight=weights)
-
         best_model = None
         best_preds = None
         best_score = 0
@@ -316,25 +413,26 @@ class TrainRunner(BaseRunner):
             start_time = time.time()
 
             avg_loss = self._train_epoch(
-                train_loader, model, criterion, optimizer, scheduler, epoch
+                train_preds, train_labels_folds, model, criterion, optimizer
             )
             avg_val_loss_list: List[float] = []
             preds_array = np.zeros(
                 (num_times_tta, len(val_idx), self.params.target_size)
             )
             for i in range(num_times_tta):
-                avg_val_loss, preds = self._valid_epoch(valid_loader, model, criterion)
+                avg_val_loss, preds = self._valid_epoch(
+                    valid_preds, valid_labels_folds, model, criterion
+                )
                 avg_val_loss_list.append(avg_val_loss)
                 preds_array[i] = preds
+                break  # ensure not to do tta
             avg_val_loss = np.mean(avg_val_loss_list)
             scheduler = self._step_scheduler(scheduler, avg_val_loss)
 
             preds = preds_array.mean(axis=0)
             preds_ = np.argmax(preds, axis=1)
-            valid_labels_evaluate = valid_folds.loc[: self.original_train_length, :]
-            valid_labels_evaluate = valid_labels_evaluate["target"].values
-            preds_evaluate = preds_[: len(valid_labels_evaluate)]
-            score = self._evaluate(valid_labels_evaluate, preds_evaluate)
+            valid_labels = valid_folds["target"].values
+            score = self._evaluate(valid_labels, preds_)
             scores.append(score)
             elapsed = time.time() - start_time
             self.logger.info(
@@ -365,7 +463,6 @@ class TrainRunner(BaseRunner):
                 "best_score": best_score,
                 "scores": scores,
                 "config": self.cfg,
-                "preds_evaluate_length": len(preds_evaluate),
             },
             f"{OutputPath.model}/{self.cfg.basic.run_name}_{n_fold}.pth",
         )
@@ -373,145 +470,48 @@ class TrainRunner(BaseRunner):
             f"{OutputPath.model}/{self.cfg.basic.run_name}_{n_fold}.pth"
         )["preds"]
         valid_folds["preds"] = np.argmax(preds_check_point, axis=1)
+
+        # torch.save(
+        #     {
+        #         "preds": preds,
+        #         "config": self.cfg,
+        #     },
+        #     f"{OutputPath.model}/{self.cfg.basic.run_name}_{n_fold}.pth",
+        # )
+        # valid_folds = valid_folds.assign(preds=np.argmax(preds, axis=1))
         return valid_folds
 
     def run_cv(self, train: pd.DataFrame) -> None:
-        self.logger.info(f"Runner: {self.__class__.__name__}")
         self.logger.info(f"debug mode: {self.cfg.basic.is_debug}")
         self.logger.info(f"start time: {datetime.datetime.now()}")
         train_images = load_npz(InputPath.train_images)
         train_labels = load_npz(InputPath.train_labels)
-        self.original_train_length = len(train_images)
-        if self.params.is_psuedo_labeling:
-            pseudo_dict = self.psuedo_label(train)
-            test_psuedo = pd.DataFrame({"target": pseudo_dict.values()})
-            kf = generate_kf(self.cfg)
-            kf_generator = kf.split(test_psuedo, test_psuedo["target"])
-            for fold_i, (_, val_idx) in enumerate(kf_generator):
-                test_psuedo.loc[val_idx, "fold"] = fold_i
-            test_psuedo = test_psuedo.assign(fold=test_psuedo["fold"].astype(int))
-            train = pd.concat((train, test_psuedo), axis=0, ignore_index=True)
-            test_images = load_npz(InputPath.test_images)
-            test_images_for_train = test_images[list(pseudo_dict.keys())]
-            test_labels_for_train = np.array(list(pseudo_dict.values()))
-            train_images = np.concatenate((train_images, test_images_for_train), axis=0)
-            train_labels = np.concatenate((train_labels, test_labels_for_train), axis=0)
-            assert train_images.shape[1:] == (224, 224, 3)
-            assert train_labels.ndim == 1
-            assert len(train_images) == len(train_labels)
-            assert len(train_images) == len(train)
         oof_df = pd.DataFrame()
         for n_fold in range(self.cfg.kfold.number):
-            start_time = time.time()
             _oof_df = self._train(train, train_images, train_labels, n_fold)
-            elapsed = time.time() - start_time
             self.logger.info(f"========== fold: {n_fold} result ==========")
-            self.logger.info(f"fold{n_fold} time: {elapsed/60:.0f}min.")
-            _oof_df_evaluate = _oof_df.loc[: self.original_train_length, :]
-            score = self._evaluate(
-                _oof_df_evaluate["target"], _oof_df_evaluate["preds"], verbose=True
-            )
+            score = self._evaluate(_oof_df["target"], _oof_df["preds"], verbose=True)
             if hasattr(self.logger, "result"):
                 self.logger.result(f"Fold {n_fold} Score: {score:<.5f}")
             oof_df = pd.concat([oof_df, _oof_df])
         self.logger.info("========== CV ==========")
-        oof_df_evaluate = oof_df.loc[: self.original_train_length, :]
-        score = self._evaluate(
-            oof_df_evaluate["target"], oof_df_evaluate["preds"], verbose=True
-        )
+        score = self._evaluate(oof_df["target"], oof_df["preds"], verbose=True)
         if hasattr(self.logger, "result"):
             self.logger.result(f"CV Score: {score:<.5f}")
         Jbl.save(oof_df, f"{OutputPath.model}/oof_df_{self.cfg.basic.run_name}.jbl")
 
-    def psuedo_label(self, train: pd.DataFrame) -> Dict[int, int]:
-        psuedo_base_run_name = self.params.psuedo_base_run_name
-        self.logger.info(f"Execute psuedo labeling with {psuedo_base_run_name}")
-        preds_train = np.zeros((len(train), self.params.target_size))
-        for i in tqdm(range(self.cfg.kfold.number)):
-            train_fold = train.loc[train["fold"] == i, :]
-            preds = torch.load(f"{OutputPath.model}/{psuedo_base_run_name}_{i}.pth")[
-                "preds"
-            ]
-            preds_train[train_fold.index] = preds
-        train_concat = pd.concat(
-            (
-                train[["target"]],
-                pd.DataFrame(np.max(preds_train, axis=1), columns=["pred_max"]),
-                pd.DataFrame(np.argmax(preds_train, axis=1), columns=["pred"]),
-            ),
-            axis=1,
-        )
-        train_concat = train_concat.assign(
-            is_correct=train_concat["target"] == train_concat["pred"]
-        )
-        threshold = train_concat.loc[
-            train_concat["target"] == train_concat["pred"], :
-        ].pred_max.mean()
 
-        preds_test = Jbl.load(
-            f"{OutputPath.model}/preds_test_{psuedo_base_run_name}.jbl"
-        )
-        preds_test = np.array(preds_test).mean(axis=0)
-        test = pd.DataFrame(
-            preds_test,
-            columns=[f"pred_{i}" for i in range(self.params.target_size)],
-        )
-        test = test.assign(
-            pred_max=np.max(preds_test, axis=1),
-            pred=np.argmax(preds_test, axis=1),
-        )
-        test_pseudo = test[test["pred_max"] >= threshold]
-        pseudo_dict: Dict[int, int] = {}
-        for idx, pred in zip(test_pseudo.index, test_pseudo["pred"]):
-            pseudo_dict[idx] = pred
-        return pseudo_dict
-
-
-class InferenceRunner(BaseRunner):
-    def _test_epoch(self, test_loader, model):
-        model.eval()
-        preds = []
-        for step, image_label_dict in enumerate(test_loader):
-            images = image_label_dict.get("image").to(self.cfg.basic.device)
-            with torch.no_grad():
-                y_preds = model(images)
-            preds.append(y_preds.to("cpu").numpy())
-        predictions = np.concatenate(preds).reshape(-1, self.params.target_size)
-        return predictions
-
-    def _test(self, test: pd.DataFrame, test_images: np.array, n_fold: int):
+class StackingInferenceRunner(BaseRunner):
+    def _test(self, test: pd.DataFrame, n_fold: int):
         self.logger.info(f"fold: {n_fold}")
 
-        is_tta_mode = self.params.num_tta > 0
-        num_times_tta = 1 if not is_tta_mode else self.params.num_tta
-
-        test_dataset = ProbSpaceDataset(
-            test_images,
-            is_train=False,
-        )
-        test_loader = DataLoader(
-            test_dataset,
-            batch_size=self.params.test_batch_size,
-            shuffle=False,
-            num_workers=self.params.num_workers,
-            pin_memory=True,
-            drop_last=False,
-        )
-
-        model = build_model(model_config=self.cfg)
-        model_state = torch.load(
-            f"{OutputPath.model}/{self.cfg.basic.run_name}_{n_fold}.pth"
-        )["model"]
-        model.load_state_dict(model_state)
-        model.to(self.cfg.basic.device)
-        # preds = self._test_epoch(test_loader, model)
-        preds_array = np.zeros(
-            (num_times_tta, len(test_images), self.params.target_size)
-        )
-        for i in range(num_times_tta):
-            _preds = self._test_epoch(test_loader, model)
-            preds_array[i] = _preds
-        preds = preds_array.mean(axis=0)
+        preds: List[np.array] = []
+        for run_name in self.cfg.stacked_features:
+            preds_array = Jbl.load(f"{OutputPath.model}/preds_test_{run_name}.jbl")
+            preds_mean = np.mean(preds_array, axis=0)
+            preds.append(preds_mean)
+            model_dict = torch.load(f"{OutputPath.model}/{run_name}_{n_fold}.pth")
+        preds = np.mean(preds, axis=0)
         return preds
 
     def _submit(self, preds: np.array) -> None:
@@ -524,12 +524,14 @@ class InferenceRunner(BaseRunner):
         df_sub.to_csv(path, index=False)
         self.logger.info("submission.csv created")
 
-    def run_cv(self, test: pd.DataFrame = None) -> None:
-        self.logger.info(f"Runner: {self.__class__.__name__}")
-        test_images = load_npz(InputPath.test_images)
+    def run_cv(
+        self,
+        test: Optional[pd.DataFrame] = None,
+    ) -> None:
+        # oof_df = pd.DataFrame()
         preds: List[np.array] = []
         for n_fold in range(self.cfg.kfold.number):
-            preds_fold = self._test(test, test_images, n_fold)
+            preds_fold = self._test(test, n_fold)
             preds.append(preds_fold)
         Jbl.save(preds, f"{OutputPath.model}/preds_test_{self.cfg.basic.run_name}.jbl")
 
@@ -562,7 +564,7 @@ def main():
 
     kf = generate_kf(model_config)
     kf_generator = kf.split(train, train["target"])
-    for fold_i, (_, val_idx) in enumerate(kf_generator):
+    for fold_i, (tr_idx, val_idx) in enumerate(kf_generator):
         train.loc[val_idx, "fold"] = fold_i
     train = train.assign(fold=train["fold"].astype(int))
 
@@ -572,7 +574,7 @@ def main():
         f"{OutputPath.logs}/{run_name}/result.log",
         run_name,
     )
-    TrainRunner(model_config, logger).run_cv(train)
-    InferenceRunner(model_config, logger).run_cv()
+    StackingRunner(model_config, logger).run_cv(train)
+    StackingInferenceRunner(model_config, logger).run_cv()
 
     visualize_prediction(model_config, logger)
