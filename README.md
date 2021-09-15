@@ -22,6 +22,14 @@ root@xxxxx:/workspace# venv-acitvate
 
 ## Submission
 
+### Late Sub
+
+Name | CV | Public Score | Private Score | Base | Description
+-- | -- | -- | -- | -- | --
+submission_036.csv | 0.66055 | 0.625 | 0.630 | exp034 | stacking: exp008, exp010, exp012, exp015, exp018 (2nd stage: vote)
+
+### Result
+
 Name | CV | Public Score | Private Score | Base | Description
 -- | -- | -- | -- | -- | --
 submission_035.csv | ------- | ----- | - | - | stacking: exp018, exp015, exp012, exp010 (2nd stage)
